@@ -1,102 +1,92 @@
 # Code Review (Generic)
 
-Automated code review for GitHub pull requests using multiple specialized agents with confidence-based scoring to filter false positives. Works in any coding agent that supports skills (SKILL.md format) and can spawn subagents — not tied to Claude Code or any specific vendor.
+Automated code review for pull requests using multiple specialized agents, with validation of flagged issues to filter false positives. Works in any coding agent that supports skills (SKILL.md format) and can spawn subagents — not tied to Claude Code or any specific vendor.
+
+This skill follows the behavior of the Claude Code `/code-review` plugin command. It differs only where other agents need it to (see [Differences from the plugin](#differences-from-the-plugin)).
 
 ## Overview
 
-This skill automates pull request review by launching multiple agents in parallel to independently audit changes from different perspectives. It uses confidence scoring to filter out false positives, ensuring only high-quality, actionable feedback is posted.
+This skill launches multiple agents in parallel to independently audit a pull request. It then validates the flagged issues, so that only high signal issues are reported.
 
-By default it reads the repo's guideline files — **CLAUDE.md and AGENTS.md** — treating both as equivalent sources of repo-specific coding guidance (a repo may have either or both).
+It reads the repo's guideline files — **CLAUDE.md and AGENTS.md** — and treats both as equivalent sources of repo-specific coding guidance (a repo may have either or both).
 
 ## What it does
 
-1. Checks if review is needed (skips closed, draft, and trivial PRs, and PRs already reviewed with no new commits since). If new commits came after an earlier review, it re-reviews only the new diff and drops issues already posted
+1. Checks if review is needed (stops on closed, draft, trivial, or already commented PRs)
 2. Gathers relevant guideline files (CLAUDE.md / AGENTS.md) from the repository
 3. Summarizes the pull request changes
-4. Launches 5 parallel agents to independently review (for each issue, they name the class of bug and list every place in the change where that class occurs):
-   - **Agent #1**: Audit for CLAUDE.md / AGENTS.md compliance
-   - **Agent #2**: Scan for obvious bugs in the changes
-   - **Agent #3**: Analyze git blame/history for context-based issues
-   - **Agent #4**: Check previous PRs and their comments for applicable feedback
-   - **Agent #5**: Verify compliance with guidance in code comments
-5. Scores each issue 0-100 for confidence level
-6. Filters out issues below the 50 confidence threshold
-7. Posts a review comment with the remaining issues, tagged **[Important]** (score 75 or more) or **[Nit]** (score 50-74), with Important issues first
+4. Launches 4 parallel agents to independently review:
+   - **Agents #1 and #2**: Audit for CLAUDE.md / AGENTS.md compliance
+   - **Agent #3**: Scan the diff for obvious bugs
+   - **Agent #4**: Look for problems in the introduced code, such as security issues and incorrect logic
+5. Validates each issue from the bug agents with a separate subagent
+6. Filters out issues that were not validated
+7. Outputs the review to the terminal. With `--comment`, it also posts inline PR comments, or a summary comment if no issues are found
 
 ## Usage
 
 Invoke the skill in your agent (or via `/code-review-from-claude` where slash-commands are supported) on a PR branch:
 
-- Launches 5 review agents in parallel
-- Scores each issue for confidence
-- Posts a comment with issues ≥50 confidence
-- Skips posting if no issues score ≥50
-
-**Review comment format:**
-
-```markdown
-### Code review
-
-Found 3 issues:
-
-1. [Important] Missing error handling for OAuth callback (CLAUDE.md says "Always handle OAuth errors")
-
-https://github.com/owner/repo/blob/abc123.../src/auth.ts#L67-L72
-
-2. [Important] Memory leak: OAuth state not cleaned up (bug due to missing cleanup in finally block)
-
-https://github.com/owner/repo/blob/abc123.../src/auth.ts#L88-L95
-
-3. [Nit] Retry timeout differs between two call sites (bug due to 30s in src/utils.ts and 60s in src/auth.ts)
-
-https://github.com/owner/repo/blob/abc123.../src/utils.ts#L23-L28
+```
+/code-review-from-claude [--comment]
 ```
 
-**Confidence scoring:**
+- Without `--comment`, the review goes to the terminal only. Nothing is posted.
+- With `--comment`, each issue is posted as an inline comment. If no issues are found, a summary comment is posted.
+- In an agent that does not pass arguments, ask it to post the review on the PR. This has the same effect as `--comment`.
 
-- **0**: Not confident, false positive
-- **25**: Somewhat confident, might be real
-- **50**: Moderately confident, real but minor
-- **75**: Highly confident, real and important
-- **100**: Absolutely certain, definitely real
+**What each inline comment contains:**
+
+- A brief description of the issue
+- A committable suggestion block for a small, self-contained fix that resolves the issue entirely
+- A description of the suggested fix, without a suggestion block, for a larger fix (6+ lines, structural changes, or changes spanning multiple locations)
+
+**Summary comment when no issues are found:**
+
+```markdown
+## Code review
+
+No issues found. Checked for bugs and CLAUDE.md / AGENTS.md compliance.
+```
+
+**What gets flagged:**
+
+- Code that will fail to compile or parse
+- Code that will definitely produce wrong results regardless of inputs
+- Clear, unambiguous guideline-file violations where the exact rule can be quoted
 
 **False positives filtered:**
 
-- Pre-existing issues not introduced in the PR
-- Code that looks like a bug but isn't
+- Pre-existing issues
+- Something that appears to be a bug but is actually correct
 - Pedantic nitpicks
-- Issues linters will catch
-- General quality issues (unless in a guideline file)
-- Issues with lint ignore comments
+- Issues a linter will catch
+- General code quality concerns (unless required in a guideline file)
+- Issues silenced in the code, such as with a lint ignore comment
+
+## Differences from the plugin
+
+These adaptations let other agents use the skill:
+
+| Plugin | This skill |
+|---|---|
+| Haiku, Sonnet, and Opus agents | Fast, standard, and most capable subagents, or the default model if the agent cannot select one |
+| CLAUDE.md only | CLAUDE.md and AGENTS.md |
+| `mcp__github_inline_comment__create_inline_comment` | The agent's inline comment tool, or `gh api` with usage notes |
+| Checks for comments left by Claude | Checks for comments left by the agent or an earlier run of this review |
+| Still reviews PRs generated by Claude | Still reviews PRs generated by AI agents |
+| `allowed-tools` for Claude Code | No tool permissions |
+| `--comment` argument | Also a user request to post the review on the PR |
+| GitHub only | Commands, link format, and suggestion syntax can be adapted to other platforms |
+
+The frontmatter also differs: this skill adds `name`, names the guideline files in `description`, and sets `disable-model-invocation: true`, so a user must start it. The plugin sets it to `false`.
 
 ## Best practices
 
 - Maintain clear CLAUDE.md / AGENTS.md files for better compliance checking
-- Trust the 50+ confidence threshold — false positives are filtered
 - Run on all non-trivial pull requests
 - Review agent findings as a starting point for human review
 - Update guideline files based on recurring review patterns
-
-## Configuration
-
-### Adjusting confidence threshold
-
-The threshold is currently set to 50. To adjust, edit SKILL.md:
-
-```markdown
-Filter out any issues with a score less than 50.
-```
-
-Change `50` to your preferred threshold (0-100). Also change the `[Nit]` score range in SKILL.md (now 50-74) to start at the new threshold.
-
-### Customizing review focus
-
-Edit SKILL.md to add or modify agent tasks, e.g.:
-
-- Security-focused agents
-- Performance analysis agents
-- Accessibility checking agents
-- Documentation quality checks
 
 ## Requirements
 
@@ -108,14 +98,14 @@ Edit SKILL.md to add or modify agent tasks, e.g.:
 
 - **Review takes too long**: normal for large PRs — agents run in parallel; consider splitting large PRs.
 - **Too many false positives**: make guideline files more specific about what matters.
-- **No review comment posted**: check whether the PR is closed/draft/trivial, was already reviewed with no new commits since, or no issues scored ≥50.
+- **No comment on the PR**: check that you passed `--comment`, and that the PR is not closed, draft, trivial, or already commented on.
 - **Link formatting broken**: links must use the exact form `https://github.com/owner/repo/blob/[full-sha]/path/file.ext#L[start]-L[end]` with at least 1 line of context.
 - **`gh` not working**: install and authenticate it (`gh auth login`), and verify the repository has a GitHub remote.
 
 ## Provenance
 
-Originally derived from Anthropic's Claude Code code-review plugin (author: Boris Cherny), since generalized: standard SKILL.md format, no vendor-specific agent types or tool permissions, neutral footer, and reads both CLAUDE.md and AGENTS.md by default. Later changes: re-review of new commits, bug classes in agent findings, and [Important] / [Nit] tags.
+Originally derived from Anthropic's Claude Code code-review plugin (author: Boris Cherny), since generalized: standard SKILL.md format, no vendor-specific agent types or tool permissions, and reads both CLAUDE.md and AGENTS.md. Last synced with the plugin at `anthropics/claude-plugins-official` commit `a7ba5b93db0c7c8d17f3f1d25853adca79598a1a`, plugin version 1.0.1.
 
 ## Version
 
-2.0.0
+3.0.0
