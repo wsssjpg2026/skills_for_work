@@ -79,7 +79,7 @@ These adaptations let other agents use the skill:
 | `--comment` argument | Also a user request to post the review on the PR |
 | GitHub only | Commands, link format, and suggestion syntax can be adapted to other platforms |
 
-The frontmatter also differs: this skill adds `name`, names the guideline files in `description`, and sets `disable-model-invocation: true`, so a user must start it. The plugin sets it to `false`.
+The frontmatter also differs: this skill adds `name` and names the guideline files in `description`.
 
 ## Best practices
 

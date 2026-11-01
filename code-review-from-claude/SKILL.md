@@ -1,7 +1,7 @@
 ---
 name: code-review-from-claude
 description: Code review a pull request. Checks for bugs and for compliance with the repo's guideline files (CLAUDE.md and AGENTS.md).
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 Provide a code review for the given pull request. This workflow is tool-agnostic: it works in any coding agent that can spawn subagents and run shell commands, and does not depend on any specific vendor, model, or plugin format.
