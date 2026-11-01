@@ -10,10 +10,10 @@ Throughout this skill, "guideline files" means the repository's **CLAUDE.md and 
 
 To do this, follow these steps precisely:
 
-1. Use a fast, lightweight subagent to check if the pull request (a) is closed, (b) is a draft, (c) does not need a code review (eg. because it is an automated pull request, or is very simple and obviously ok), or (d) already has a code review from you from earlier. If so, do not proceed.
+1. Use a fast, lightweight subagent to check if the pull request (a) is closed, (b) is a draft, (c) does not need a code review (eg. because it is an automated pull request, or is very simple and obviously ok), or (d) already has a code review from you from earlier and no new commits since that review. If so, do not proceed. If an earlier review exists and new commits were pushed after it, proceed as a **re-review**: in steps 3-5, review only the diff from the last reviewed commit to the head (eg. `git diff <last-reviewed-sha>...<head-sha>`), give the subagents the issues already posted in earlier reviews, and drop any issue that repeats one of them.
 2. Use another fast subagent to give you a list of file paths to (but not the contents of) any relevant guideline files from the codebase: the root CLAUDE.md and root AGENTS.md (whichever exist), as well as any CLAUDE.md or AGENTS.md files in the directories whose files the pull request modified.
 3. Use a fast subagent to view the pull request, and ask the subagent to return a summary of the change.
-4. Then, launch 5 parallel subagents (use your most capable general-purpose agents for these) to independently code review the change. The subagents should do the following, then return a list of issues and the reason each issue was flagged (eg. guideline-file adherence, bug, historical git context, etc.):
+4. Then, launch 5 parallel subagents (use your most capable general-purpose agents for these) to independently code review the change. The subagents should do the following, then return a list of issues and the reason each issue was flagged (eg. guideline-file adherence, bug, historical git context, etc.). For each issue, name the class of bug and list every place in the change where that class occurs, so the author can fix all of them in one pass:
    a. Agent #1: Audit the changes to make sure they comply with the guideline files (CLAUDE.md / AGENTS.md). Note that guideline files are guidance for agents as they write code, so not all instructions will be applicable during code review.
    b. Agent #2: Read the file changes in the pull request, then do a shallow scan for obvious bugs. Avoid reading extra context beyond the changes, focusing just on the changes themselves. Focus on large bugs, and avoid small issues and nitpicks. Ignore likely false positives.
    c. Agent #3: Read the git blame and history of the code modified, to identify any bugs in light of that historical context.
@@ -29,8 +29,9 @@ To do this, follow these steps precisely:
 7. Use a fast subagent to repeat the eligibility check from #1, to make sure that the pull request is still eligible for code review.
 8. Finally, use the `gh` command to comment back on the pull request with the result. When writing your comment, keep in mind to:
    a. Keep your output brief
-   b. Avoid emojis (except the footer line below)
-   c. Link and cite relevant code, files, and URLs
+   b. Tag each issue by its score from #5: **[Important]** for 75 or more, **[Nit]** for 50-74. List Important issues first
+   c. Avoid emojis (except the footer line below)
+   d. Link and cite relevant code, files, and URLs
 
 Examples of false positives, for steps 4 and 5:
 
@@ -57,15 +58,15 @@ Notes:
 
 Found 3 issues:
 
-1. <brief description of bug> (CLAUDE.md says "<...>")
+1. [Important] <brief description of bug> (CLAUDE.md says "<...>")
 
 <link to file and line with full sha1 + line range for context, note that you MUST provide the full sha and not use bash here, eg. https://github.com/anthropics/claude-code/blob/1d54823877c4de72b2316a64032a54afc404e619/README.md#L13-L17>
 
-2. <brief description of bug> (some/other/AGENTS.md says "<...>")
+2. [Important] <brief description of bug> (some/other/AGENTS.md says "<...>")
 
 <link to file and line with full sha1 + line range for context>
 
-3. <brief description of bug> (bug due to <file and code snippet>)
+3. [Nit] <brief description of bug> (bug due to <file and code snippet>)
 
 <link to file and line with full sha1 + line range for context>
 
