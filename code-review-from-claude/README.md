@@ -10,10 +10,10 @@ By default it reads the repo's guideline files — **CLAUDE.md and AGENTS.md** �
 
 ## What it does
 
-1. Checks if review is needed (skips closed, draft, trivial, or already-reviewed PRs)
+1. Checks if review is needed (skips closed, draft, and trivial PRs, and PRs already reviewed with no new commits since). If new commits came after an earlier review, it re-reviews only the new diff and drops issues already posted
 2. Gathers relevant guideline files (CLAUDE.md / AGENTS.md) from the repository
 3. Summarizes the pull request changes
-4. Launches 5 parallel agents to independently review:
+4. Launches 5 parallel agents to independently review (for each issue, they name the class of bug and list every place in the change where that class occurs):
    - **Agent #1**: Audit for CLAUDE.md / AGENTS.md compliance
    - **Agent #2**: Scan for obvious bugs in the changes
    - **Agent #3**: Analyze git blame/history for context-based issues
@@ -21,7 +21,7 @@ By default it reads the repo's guideline files — **CLAUDE.md and AGENTS.md** �
    - **Agent #5**: Verify compliance with guidance in code comments
 5. Scores each issue 0-100 for confidence level
 6. Filters out issues below the 50 confidence threshold
-7. Posts a review comment with high-confidence issues only
+7. Posts a review comment with the remaining issues, tagged **[Important]** (score 75 or more) or **[Nit]** (score 50-74), with Important issues first
 
 ## Usage
 
@@ -30,7 +30,7 @@ Invoke the skill in your agent (or via `/code-review-from-claude` where slash-co
 - Launches 5 review agents in parallel
 - Scores each issue for confidence
 - Posts a comment with issues ≥50 confidence
-- Skips posting if no high-confidence issues are found
+- Skips posting if no issues score ≥50
 
 **Review comment format:**
 
@@ -39,15 +39,15 @@ Invoke the skill in your agent (or via `/code-review-from-claude` where slash-co
 
 Found 3 issues:
 
-1. Missing error handling for OAuth callback (CLAUDE.md says "Always handle OAuth errors")
+1. [Important] Missing error handling for OAuth callback (CLAUDE.md says "Always handle OAuth errors")
 
 https://github.com/owner/repo/blob/abc123.../src/auth.ts#L67-L72
 
-2. Memory leak: OAuth state not cleaned up (bug due to missing cleanup in finally block)
+2. [Important] Memory leak: OAuth state not cleaned up (bug due to missing cleanup in finally block)
 
 https://github.com/owner/repo/blob/abc123.../src/auth.ts#L88-L95
 
-3. Inconsistent naming pattern (src/conventions/AGENTS.md says "Use camelCase for functions")
+3. [Nit] Retry timeout differs between two call sites (bug due to 30s in src/utils.ts and 60s in src/auth.ts)
 
 https://github.com/owner/repo/blob/abc123.../src/utils.ts#L23-L28
 ```
@@ -87,7 +87,7 @@ The threshold is currently set to 50. To adjust, edit SKILL.md:
 Filter out any issues with a score less than 50.
 ```
 
-Change `50` to your preferred threshold (0-100).
+Change `50` to your preferred threshold (0-100). Also change the `[Nit]` score range in SKILL.md (now 50-74) to start at the new threshold.
 
 ### Customizing review focus
 
@@ -108,13 +108,13 @@ Edit SKILL.md to add or modify agent tasks, e.g.:
 
 - **Review takes too long**: normal for large PRs — agents run in parallel; consider splitting large PRs.
 - **Too many false positives**: make guideline files more specific about what matters.
-- **No review comment posted**: check whether the PR is closed/draft/trivial/already reviewed, or no issues scored ≥50.
+- **No review comment posted**: check whether the PR is closed/draft/trivial, was already reviewed with no new commits since, or no issues scored ≥50.
 - **Link formatting broken**: links must use the exact form `https://github.com/owner/repo/blob/[full-sha]/path/file.ext#L[start]-L[end]` with at least 1 line of context.
 - **`gh` not working**: install and authenticate it (`gh auth login`), and verify the repository has a GitHub remote.
 
 ## Provenance
 
-Originally derived from Anthropic's Claude Code code-review plugin (author: Boris Cherny), since generalized: standard SKILL.md format, no vendor-specific agent types or tool permissions, neutral footer, and reads both CLAUDE.md and AGENTS.md by default.
+Originally derived from Anthropic's Claude Code code-review plugin (author: Boris Cherny), since generalized: standard SKILL.md format, no vendor-specific agent types or tool permissions, neutral footer, and reads both CLAUDE.md and AGENTS.md by default. Later changes: re-review of new commits, bug classes in agent findings, and [Important] / [Nit] tags.
 
 ## Version
 
